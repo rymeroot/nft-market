@@ -1,10 +1,15 @@
 package nftcollection
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"github.com/labstack/echo/v4"
+	"log"
 	"net/http"
 	"nft-market/nfttoken"
 	"nft-market/nftuser"
+	"os"
 )
 
 type collectionCreateRequest struct {
@@ -36,7 +41,7 @@ type collectionRequest struct {
 }
 
 type collectionCreateResponse struct {
-	ID    string `json:"id"`
+	ID    string `json:"id,omitempty"`
 	Error string `json:"error,omitempty"`
 }
 
@@ -59,6 +64,96 @@ type collectionResponse struct {
 	Info   *collectionInfoResponse   `json:"info,omitempty"`
 }
 
+func collectionExists(userid string, collectionid string) bool {
+	if _, err := os.Stat(userid + "/collections/" + collectionid); err != nil {
+		return false
+	}
+	return true
+}
+
+func verifyCollectionCreateRequest(req *collectionCreateRequest) error {
+	// TODO: verify formatting
+	if req.ContractAddress == "" || req.Name == "" || req.Description == "" {
+		return errors.New("collection contract address, name or description missing")
+	}
+	return nil
+}
+
+func collectionCreate(userid string, req *collectionCreateRequest, res *collectionCreateResponse) error {
+	if err := verifyCollectionCreateRequest(req); err != nil {
+		res.Error = err.Error()
+		return err
+	}
+
+	h := sha256.New()
+	h.Write([]byte(userid + req.ContractAddress + req.Name + req.Description))
+	collectionID := hex.EncodeToString(h.Sum(nil))
+	collectionPath := userid + "/collections/" + collectionID
+
+	if collectionExists(userid, collectionID) {
+		res.Error = "collection " + collectionID + " already exists"
+		return errors.New(res.Error)
+	}
+
+	privateKey, err := os.ReadFile(userid + "/private_key")
+	if err != nil {
+		res.Error = "failed to read user private key"
+		return err
+	}
+	publicKey, err := os.ReadFile(userid + "/public_key")
+	if err != nil {
+		res.Error = "failed to read user private key"
+		return err
+	}
+	log.Printf("public key: '%v', private key: '%v'\n", string(publicKey), string(privateKey))
+
+	/*
+		// TODO: create collection on immutablex here
+		// use only one admin contract and project?
+		// but then need to keep track of minted token id, which also requires user to handle token id in IPFS metadata
+		// also then we have to first reserve a token, give user the ID so that user could create metadata and then mint
+		ctx, cfg, imxClient := nftimx.Connect()
+		l1signer, err := ethereum.NewSigner(string(privateKey), cfg.ChainID)
+		imxCreateCollectionRequest := api.NewCreateCollectionRequest(
+			req.ContractAddress, req.Name,
+			string(publicKey),4169)
+		imxCreateCollectionResponse, err := imxClient.CreateCollection(ctx, l1signer, imxCreateCollectionRequest)
+		imxCollection, _ := json.MarshalIndent(imxCreateCollectionResponse, "", "    ")
+		log.Printf("Created new collection, response: ", string(imxCollection))
+	*/
+
+	err = os.MkdirAll(collectionPath, os.ModePerm)
+	if err != nil {
+		res.Error = "failed to create collection"
+		return err
+	}
+
+	err = os.WriteFile(collectionPath+"/contract_address", []byte(req.ContractAddress), 0644)
+	if err != nil {
+		_ = os.RemoveAll(collectionPath)
+		res.Error = "failed to create collection contract"
+		return err
+	}
+
+	err = os.WriteFile(collectionPath+"/name", []byte(req.Name), 0644)
+	if err != nil {
+		_ = os.RemoveAll(collectionPath)
+		res.Error = "failed to create collection name"
+		return err
+	}
+
+	err = os.WriteFile(collectionPath+"/description", []byte(req.Description), 0644)
+	if err != nil {
+		_ = os.RemoveAll(collectionPath)
+		res.Error = "failed to create collection description"
+		return err
+	}
+
+	res.ID = collectionID
+	res.Error = ""
+	return nil
+}
+
 func Collection(c echo.Context) error {
 	var req collectionRequest
 	if err := c.Bind(&req); err != nil {
@@ -69,6 +164,10 @@ func Collection(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
+	if !nftuser.UserExists(req.UserID) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "user " + req.UserID + " doesn't exist"})
+	}
+
 	var resCreate *collectionCreateResponse = nil
 	var resUpdate *collectionUpdateResponse = nil
 	var resList []collectionInfoResponse = nil
@@ -76,11 +175,7 @@ func Collection(c echo.Context) error {
 
 	if req.Create != nil {
 		resCreate = new(collectionCreateResponse)
-		resCreate.ID = "new collection id here"
-		if req.Create.Name != "" {
-			resCreate.ID = req.Create.Name
-		}
-		resCreate.Error = ""
+		_ = collectionCreate(req.UserID, req.Create, resCreate)
 	}
 
 	if req.Update != nil {
