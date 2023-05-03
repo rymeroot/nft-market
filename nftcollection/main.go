@@ -7,7 +7,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"log"
 	"net/http"
-	"nft-market/nfttoken"
 	"nft-market/nftuser"
 	"os"
 )
@@ -49,12 +48,17 @@ type collectionUpdateResponse struct {
 	Error string `json:"error,omitempty"`
 }
 
+type collectionTokenInfo struct {
+	ID       string `json:"id"`
+	Metadata string `json:"metadata"`
+}
+
 type collectionInfoResponse struct {
-	ID          string               `json:"id,omitempty"`
-	Name        string               `json:"name,omitempty"`
-	Description string               `json:"description,omitempty"`
-	Tokens      []nfttoken.TokenInfo `json:"tokens,omitempty"`
-	Error       string               `json:"error,omitempty"`
+	ID          string                `json:"id,omitempty"`
+	Name        string                `json:"name,omitempty"`
+	Description string                `json:"description,omitempty"`
+	Tokens      []collectionTokenInfo `json:"tokens,omitempty"`
+	Error       string                `json:"error,omitempty"`
 }
 
 type collectionResponse struct {
@@ -64,7 +68,7 @@ type collectionResponse struct {
 	Info   *collectionInfoResponse   `json:"info,omitempty"`
 }
 
-func collectionExists(userid string, collectionid string) bool {
+func CollectionExists(userid string, collectionid string) bool {
 	if _, err := os.Stat(userid + "/collections/" + collectionid); err != nil {
 		return false
 	}
@@ -90,7 +94,7 @@ func collectionCreate(userid string, req *collectionCreateRequest, res *collecti
 	collectionID := hex.EncodeToString(h.Sum(nil))
 	collectionPath := userid + "/collections/" + collectionID
 
-	if collectionExists(userid, collectionID) {
+	if CollectionExists(userid, collectionID) {
 		res.Error = "collection " + collectionID + " already exists"
 		return errors.New(res.Error)
 	}

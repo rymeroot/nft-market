@@ -3,6 +3,8 @@ module nft-market
 go 1.20
 
 require (
+	github.com/ethereum/go-ethereum v1.10.25
+	github.com/holiman/uint256 v1.2.0
 	github.com/immutable/imx-core-sdk-golang v0.2.2
 	github.com/labstack/echo/v4 v4.10.2
 )
@@ -12,7 +14,6 @@ require (
 	github.com/deckarep/golang-set v1.8.0 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.1.0 // indirect
 	github.com/dontpanicdao/caigo v0.3.1 // indirect
-	github.com/ethereum/go-ethereum v1.10.25 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/go-stack/stack v1.8.1 // indirect
 	github.com/google/uuid v1.3.0 // indirect
