@@ -109,17 +109,17 @@ func userCreate(req *registerRequest) (string, error) {
 		return failWith("failed to create user infrastructure (address)", err)
 	}
 
-	privateStarkKeyStr, err := stark.GenerateKey()
+	privateStarkKey, err := stark.GenerateKey()
 	if err != nil {
 		_ = os.RemoveAll(userid)
 		return failWith("failed to generate Stark Private Key", err)
 	}
-	err = os.WriteFile(userid+"/stark_private_key", []byte(fmt.Sprintf("%x", privateStarkKeyStr)), 0644)
+	err = os.WriteFile(userid+"/stark_private_key", []byte(fmt.Sprintf("%x", privateStarkKey)), 0644)
 	if err != nil {
 		_ = os.RemoveAll(userid)
 		return failWith("failed to create user infrastructure (stark private key)", err)
 	}
-	l2signer, err := stark.NewSigner(privateStarkKeyStr)
+	l2signer, err := stark.NewSigner(privateStarkKey)
 	if err != nil {
 		_ = os.RemoveAll(userid)
 		return failWith("failed to create StarkSigner", err)
