@@ -5,7 +5,10 @@ import (
 	"github.com/immutable/imx-core-sdk-golang/imx"
 	"github.com/immutable/imx-core-sdk-golang/imx/api"
 	"github.com/immutable/imx-core-sdk-golang/imx/signers/ethereum"
+	"github.com/immutable/imx-core-sdk-golang/imx/signers/stark"
 	"log"
+	"math/big"
+	"strconv"
 )
 
 func Connect() (context.Context, imx.Config, *imx.Client) {
@@ -26,8 +29,8 @@ func Connect() (context.Context, imx.Config, *imx.Client) {
 	return ctx, cfg, imxClient
 }
 
-func Mint(userPrivateKey string, userAddress string, contractAddress string, tokenID string, tokenMetadata string) int32 {
-	return 0
+func Mint(userPrivateKey string, userAddress string, contractAddress string, tokenID string, tokenMetadata string) string {
+	return "0"
 	ctx, cfg, imxClient := Connect()
 	l1signer, err := ethereum.NewSigner(userPrivateKey, cfg.ChainID)
 
@@ -65,8 +68,48 @@ func Mint(userPrivateKey string, userAddress string, contractAddress string, tok
 	imxres, err := imxClient.Mint(ctx, l1signer, req)
 	if err != nil {
 		log.Printf("error in minting.MintTokensWorkflow: %v\n", err)
+		return ""
 	}
 
 	res := imxres.GetResults()
-	return res[0].GetTxId()
+	return res[0].TokenId
+}
+
+func Sell(userPrivateKey string, userAddress string, starkPrivateKeyStr string, contractAddress string, tokenID string, amount imx.Wei) (int32, error) {
+	return 0, nil
+	ctx, cfg, imxClient := Connect()
+	l1signer, err := ethereum.NewSigner(userPrivateKey, cfg.ChainID)
+	if err != nil {
+		log.Panicf("error in creating signer: %v\n", err)
+		return 0, err
+	}
+
+	starkPrivateKey := new(big.Int)
+	starkPrivateKey.SetString(starkPrivateKeyStr, 16)
+	l2signer, err := stark.NewSigner(starkPrivateKey)
+	if err != nil {
+		log.Panicf("error in creating StarkSigner: %v\n", err)
+		return 0, err
+	}
+
+	sellToken := imx.SignableERC721Token(tokenID, contractAddress)
+	buyToken := imx.SignableETHToken()
+	createOrderRequest := &api.GetSignableOrderRequest{
+		AmountBuy:  strconv.FormatUint(amount, 10),
+		AmountSell: "1",
+		Fees:       nil,
+		TokenBuy:   buyToken,
+		TokenSell:  sellToken,
+		User:       userAddress,
+	}
+	createOrderRequest.SetExpirationTimestamp(0)
+
+	createOrderResponse, err := imxClient.CreateOrder(ctx, l1signer, l2signer, createOrderRequest)
+	if err != nil {
+		log.Printf("error in CreateOrder: %v", err)
+		return 0, err
+	}
+
+	log.Printf("CreateOrder ID: %v", createOrderResponse.OrderId)
+	return createOrderResponse.OrderId, nil
 }
