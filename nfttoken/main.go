@@ -10,6 +10,7 @@ import (
 	"nft-market/nftimx"
 	"nft-market/nftuser"
 	"os"
+	"strconv"
 )
 
 type tokenInfo struct {
@@ -83,6 +84,21 @@ func verifyTokenMintRequest(req *tokenMintRequest) error {
 	return nil
 }
 
+func verifyTokenSellRequest(req *tokenSellRequest) error {
+	// TODO: verify formatting
+	if req.CollectionID == "" {
+		return errors.New("collection ID missing")
+	}
+	if req.TokenID == "" {
+		return errors.New("token ID missing")
+	}
+	if req.Price == "" {
+		return errors.New("price is missing")
+	}
+
+	return nil
+}
+
 func tokenReserved(userid string, tokenid string) bool {
 	if _, err := os.Stat("tokens/" + tokenid); err != nil {
 		return false
@@ -152,8 +168,8 @@ func tokenReserve(userid string, collectionID string) (string, error) {
 	return res, nil
 }
 
-func tokenMarkMinted(userid string, tokenid string) bool {
-	err := os.WriteFile("tokens/"+tokenid+"/minted", []byte("1"), 0644)
+func tokenMarkMinted(userid string, tokenid string, imxtokenid string) bool {
+	err := os.WriteFile("tokens/"+tokenid+"/minted", []byte(imxtokenid), 0644)
 	if err != nil {
 		return false
 	}
@@ -169,57 +185,114 @@ func tokenMinted(userid string, tokenid string) bool {
 	return true
 }
 
-func tokenMint(userid string, req *tokenMintRequest, res *tokenMintResponse) (string, error) {
+func tokenMint(userid string, req *tokenMintRequest, res *tokenMintResponse) error {
 	if err := verifyTokenMintRequest(req); err != nil {
 		res.Error = err.Error()
-		return "", err
+		return err
 	}
 
 	if !nftcollection.CollectionExists(userid, req.CollectionID) {
 		res.Error = "collection " + req.CollectionID + " doesn't exist"
-		return "", errors.New(res.Error)
+		return errors.New(res.Error)
 	}
 
 	collectionPath := userid + "/collections/" + req.CollectionID
 	collectionContractAddress, err := os.ReadFile(collectionPath + "/contract_address")
 	if err != nil {
 		res.Error = "failed to read collection contract address"
-		return "", err
+		return err
 	}
 	privateKey, err := os.ReadFile(userid + "/private_key")
 	if err != nil {
 		res.Error = "failed to read user private key"
-		return "", err
+		return err
 	}
 	userAddress, err := os.ReadFile(userid + "/address")
 	if err != nil {
 		res.Error = "failed to read user address"
-		return "", err
+		return err
 	}
 
 	if req.TokenID == "" {
 		log.Printf("reserving token\n")
 		res.TokenID, _ = tokenReserve(userid, req.CollectionID)
-		return "", nil
+		return nil
 	}
 
 	if !tokenReserved(userid, req.TokenID) {
 		res.Error = "wrong token ID"
-		return "", err
+		return err
 	}
 
 	if tokenMinted(userid, req.TokenID) {
 		res.Error = "token already minted"
-		return "", err
+		return err
 	}
 
 	if tokenReserved(userid, req.TokenID) {
-		txid := nftimx.Mint(string(privateKey), string(userAddress), string(collectionContractAddress), req.TokenID, req.Metadata)
-		tokenMarkMinted(userid, req.TokenID)
-		return string(txid), nil
+		// TODO: verify if token is reserved by userid
+		imxTokenID := nftimx.Mint(string(privateKey), string(userAddress), string(collectionContractAddress), req.TokenID, req.Metadata)
+		tokenMarkMinted(userid, req.TokenID, imxTokenID)
+		res.MintID = imxTokenID
+		return nil
 	}
 
-	return "", nil
+	return nil
+}
+
+func tokenSell(userid string, req *tokenSellRequest, res *tokenSellResponse) error {
+	if err := verifyTokenSellRequest(req); err != nil {
+		res.Error = err.Error()
+		return err
+	}
+
+	if !nftcollection.CollectionExists(userid, req.CollectionID) {
+		res.Error = "collection " + req.CollectionID + " doesn't exist"
+		return errors.New(res.Error)
+	}
+
+	if !tokenMinted(userid, req.TokenID) {
+		// TODO: verify that token is minted by userid
+		res.Error = "token not minted"
+		return errors.New(res.Error)
+	}
+
+	collectionPath := userid + "/collections/" + req.CollectionID
+	collectionContractAddress, err := os.ReadFile(collectionPath + "/contract_address")
+	if err != nil {
+		res.Error = "failed to read collection contract address"
+		return err
+	}
+	privateKey, err := os.ReadFile(userid + "/private_key")
+	if err != nil {
+		res.Error = "failed to read user private key"
+		return err
+	}
+	userAddress, err := os.ReadFile(userid + "/address")
+	if err != nil {
+		res.Error = "failed to read user address"
+		return err
+	}
+	starkKey, err := os.ReadFile(userid + "/stark_private_key")
+	if err != nil {
+		res.Error = "failed to read user private key"
+		return err
+	}
+	imxTokenID, err := os.ReadFile("tokens/" + req.TokenID + "/minted")
+	if err != nil {
+		res.Error = "failed to read minted token ID"
+		return err
+	}
+
+	listingPriceInWei, _ := strconv.ParseUint(req.Price, 10, 64)
+	sellID, err := nftimx.Sell(string(privateKey), string(userAddress), string(starkKey), string(collectionContractAddress), string(imxTokenID), listingPriceInWei)
+	if err != nil {
+		res.Error = "failed to create sell order on IMX"
+		return err
+	}
+
+	res.SellID = string(sellID)
+	return nil
 }
 
 func Token(c echo.Context) error {
@@ -243,16 +316,24 @@ func Token(c echo.Context) error {
 
 	if req.Mint != nil {
 		resMint = new(tokenMintResponse)
-		resMint.MintID, _ = tokenMint(req.UserID, req.Mint, resMint)
+		//var err error
+		err := tokenMint(req.UserID, req.Mint, resMint)
+		if err != nil {
+			log.Printf("error creating in minting: %v", err)
+		}
 	}
 
 	if req.Sell != nil {
+		// create order in IMX
 		resSell = new(tokenSellResponse)
-		resSell.SellID = "new sell transaction id here"
-		resSell.Error = ""
+		err := tokenSell(req.UserID, req.Sell, resSell)
+		if err != nil {
+			log.Printf("error creating sell listing: %v", err)
+		}
 	}
 
 	if req.Buy != nil {
+		// create trade in IMX
 		resBuy = new(tokenBuyResponse)
 		resBuy.BuyID = "new buy transaction id here"
 		resBuy.Error = ""
