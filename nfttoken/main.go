@@ -28,10 +28,11 @@ type tokenSellRequest struct {
 	CollectionID string `json:"collection_id"`
 	TokenID      string `json:"token_id"`
 	Price        string `json:"price"`
+	SellingID    string `json:"selling_id,omitempty"`
 }
 
 type tokenBuyRequest struct {
-	SellID string `json:"sell_id"`
+	TokenID string `json:"token_id"`
 }
 
 type tokenTransferRequest struct {
@@ -86,6 +87,10 @@ func verifyTokenMintRequest(req *tokenMintRequest) error {
 
 func verifyTokenSellRequest(req *tokenSellRequest) error {
 	// TODO: verify formatting
+	if req.SellingID != "" {
+		return nil
+	}
+
 	if req.CollectionID == "" {
 		return errors.New("collection ID missing")
 	}
@@ -96,6 +101,14 @@ func verifyTokenSellRequest(req *tokenSellRequest) error {
 		return errors.New("price is missing")
 	}
 
+	return nil
+}
+
+func verifyTokenBuyRequest(req *tokenBuyRequest) error {
+	// TODO: verify formatting
+	if req.TokenID == "" {
+		return errors.New("token ID missing")
+	}
 	return nil
 }
 
@@ -240,6 +253,34 @@ func tokenMint(userid string, req *tokenMintRequest, res *tokenMintResponse) err
 	return nil
 }
 
+func tokenMarkSelling(userid string, tokenid string, sellingID string) bool {
+	path := "tokens/" + tokenid + "/selling"
+
+	if sellingID == "-1" {
+		// cancelling sell order
+		err := os.Remove(path)
+		if err != nil {
+			return false
+		}
+		return true
+	}
+
+	err := os.WriteFile(path, []byte(sellingID), 0644)
+	if err != nil {
+		return false
+	}
+
+	return true
+}
+
+func tokenSelling(userid string, tokenid string) bool {
+	if _, err := os.Stat("tokens/" + tokenid + "/selling"); err != nil {
+		return false
+	}
+
+	return true
+}
+
 func tokenSell(userid string, req *tokenSellRequest, res *tokenSellResponse) error {
 	if err := verifyTokenSellRequest(req); err != nil {
 		res.Error = err.Error()
@@ -254,6 +295,12 @@ func tokenSell(userid string, req *tokenSellRequest, res *tokenSellResponse) err
 	if !tokenMinted(userid, req.TokenID) {
 		// TODO: verify that token is minted by userid
 		res.Error = "token not minted"
+		return errors.New(res.Error)
+	}
+
+	if tokenSelling(userid, req.TokenID) && req.SellingID == "" {
+		// TODO: verify that token is selling by userid
+		res.Error = "token already on sale"
 		return errors.New(res.Error)
 	}
 
@@ -284,6 +331,18 @@ func tokenSell(userid string, req *tokenSellRequest, res *tokenSellResponse) err
 		return err
 	}
 
+	if req.SellingID != "" {
+		sellID, err := nftimx.CancelSale(string(privateKey), string(starkKey), req.SellingID)
+		if err != nil {
+			res.Error = "failed to cancel sell order on IMX"
+			return err
+		}
+
+		tokenMarkSelling(userid, req.TokenID, "-1")
+		res.SellID = string(sellID)
+		return nil
+	}
+
 	listingPriceInWei, _ := strconv.ParseUint(req.Price, 10, 64)
 	sellID, err := nftimx.Sell(string(privateKey), string(userAddress), string(starkKey), string(collectionContractAddress), string(imxTokenID), listingPriceInWei)
 	if err != nil {
@@ -291,7 +350,47 @@ func tokenSell(userid string, req *tokenSellRequest, res *tokenSellResponse) err
 		return err
 	}
 
+	tokenMarkSelling(userid, req.TokenID, string(sellID))
 	res.SellID = string(sellID)
+	return nil
+}
+
+func tokenBuy(userid string, req *tokenBuyRequest, res *tokenBuyResponse) error {
+	if err := verifyTokenBuyRequest(req); err != nil {
+		res.Error = err.Error()
+		return err
+	}
+
+	if !tokenSelling(userid, req.TokenID) {
+		// TODO: verify that token is selling by userid
+		res.Error = "token is not on sale"
+		return errors.New(res.Error)
+	}
+
+	privateKey, err := os.ReadFile(userid + "/private_key")
+	if err != nil {
+		res.Error = "failed to read user private key"
+		return err
+	}
+	starkKey, err := os.ReadFile(userid + "/stark_private_key")
+	if err != nil {
+		res.Error = "failed to read user private key"
+		return err
+	}
+	sellingID, err := os.ReadFile("tokens/" + req.TokenID + "/selling")
+	if err != nil {
+		res.Error = "failed to read token selling ID"
+		return err
+	}
+
+	buyID, err := nftimx.Buy(string(privateKey), string(starkKey), string(sellingID))
+	if err != nil {
+		res.Error = "failed to create buy trade on IMX"
+		return err
+	}
+
+	tokenMarkSelling(userid, req.TokenID, "-1")
+	res.BuyID = string(buyID)
 	return nil
 }
 
@@ -316,7 +415,6 @@ func Token(c echo.Context) error {
 
 	if req.Mint != nil {
 		resMint = new(tokenMintResponse)
-		//var err error
 		err := tokenMint(req.UserID, req.Mint, resMint)
 		if err != nil {
 			log.Printf("error creating in minting: %v", err)
@@ -334,9 +432,12 @@ func Token(c echo.Context) error {
 
 	if req.Buy != nil {
 		// create trade in IMX
+		// TODO: move token data to new user
 		resBuy = new(tokenBuyResponse)
-		resBuy.BuyID = "new buy transaction id here"
-		resBuy.Error = ""
+		err := tokenBuy(req.UserID, req.Buy, resBuy)
+		if err != nil {
+			log.Printf("error buying a token: %v", err)
+		}
 	}
 
 	if req.Transfer != nil {
