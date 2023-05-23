@@ -12,6 +12,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"log"
 	"net/http"
+	"nft-market/storage"
 	"os"
 )
 
@@ -32,13 +33,6 @@ func VerifyUserID(userid string) error {
 		return errors.New("invalid user ID")
 	}
 	return nil
-}
-
-func UserExists(userid string) bool {
-	if _, err := os.Stat(userid); err != nil {
-		return false
-	}
-	return true
 }
 
 func verifyRegisterRequest(req *registerRequest) error {
@@ -66,7 +60,7 @@ func userCreate(req *registerRequest) (string, error) {
 		return "", errors.New("failed to verify user id while creating it")
 	}
 
-	if UserExists(userid) {
+	if storage.UserExists(userid) {
 		return "", errors.New("user " + userid + " already registered")
 	}
 

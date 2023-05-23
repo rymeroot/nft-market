@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"nft-market/nftuser"
+	"nft-market/storage"
 	"os"
 )
 
@@ -68,13 +69,6 @@ type collectionResponse struct {
 	Info   *collectionInfoResponse   `json:"info,omitempty"`
 }
 
-func CollectionExists(userid string, collectionid string) bool {
-	if _, err := os.Stat(userid + "/collections/" + collectionid); err != nil {
-		return false
-	}
-	return true
-}
-
 func verifyCollectionCreateRequest(req *collectionCreateRequest) error {
 	// TODO: verify formatting
 	if req.ContractAddress == "" || req.Name == "" || req.Description == "" {
@@ -94,19 +88,19 @@ func collectionCreate(userid string, req *collectionCreateRequest, res *collecti
 	collectionID := hex.EncodeToString(h.Sum(nil))
 	collectionPath := userid + "/collections/" + collectionID
 
-	if CollectionExists(userid, collectionID) {
+	if storage.CollectionExists(userid, collectionID) {
 		res.Error = "collection " + collectionID + " already exists"
 		return errors.New(res.Error)
 	}
 
-	privateKey, err := os.ReadFile(userid + "/private_key")
+	privateKey, err := storage.GetUserPrivateKey(userid)
 	if err != nil {
-		res.Error = "failed to read user private key"
+		res.Error = "failed to get user private key"
 		return err
 	}
-	publicKey, err := os.ReadFile(userid + "/public_key")
+	publicKey, err := storage.GetUserPublicKey(userid)
 	if err != nil {
-		res.Error = "failed to read user private key"
+		res.Error = "failed to get user private key"
 		return err
 	}
 	log.Printf("public key: '%v', private key: '%v'\n", string(publicKey), string(privateKey))
@@ -168,7 +162,7 @@ func Collection(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	if !nftuser.UserExists(req.UserID) {
+	if !storage.UserExists(req.UserID) {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "user " + req.UserID + " doesn't exist"})
 	}
 

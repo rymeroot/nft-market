@@ -178,3 +178,37 @@ func Buy(userPrivateKey string, starkPrivateKeyStr string, saleID string) (int32
 	log.Printf("trade ID: %v", tradeResponse.TradeId)
 	return tradeResponse.TradeId, nil
 }
+
+func Transfer(userPrivateKey string, starkPrivateKeyStr string, receiver string) (int32, error) {
+	return 0, nil
+	ctx, cfg, imxClient := Connect()
+	l1signer, err := ethereum.NewSigner(userPrivateKey, cfg.ChainID)
+	if err != nil {
+		log.Panicf("error in creating signer: %v\n", err)
+		return 0, err
+	}
+
+	starkPrivateKey := new(big.Int)
+	starkPrivateKey.SetString(starkPrivateKeyStr, 16)
+	l2signer, err := stark.NewSigner(starkPrivateKey)
+	if err != nil {
+		log.Panicf("error in creating StarkSigner: %v\n", err)
+		return 0, err
+	}
+
+	request := api.GetSignableTransferRequestV1{
+		Amount:   "1",
+		Sender:   l1signer.GetAddress(),
+		Token:    imx.SignableETHToken(),
+		Receiver: receiver,
+	}
+
+	response, err := imxClient.Transfer(ctx, l1signer, l2signer, request)
+	if err != nil {
+		log.Printf("error calling transfer workflow: %v", err)
+		return 0, err
+	}
+
+	log.Printf("trade ID: %v", response.TransferId)
+	return response.TransferId, nil
+}
