@@ -38,7 +38,7 @@ func tokenTransfer(userid string, req *tokenTransferRequest, res *tokenTransferR
 		return err
 	}
 
-	if tokenSelling(userid, req.TokenID) {
+	if storage.TokenSelling(userid, req.TokenID) {
 		res.Error = "token is on sale, cancel first"
 		return errors.New(res.Error)
 	}

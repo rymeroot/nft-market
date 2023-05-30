@@ -59,14 +59,6 @@ func tokenMarkSelling(userid string, tokenid string, sellingID string) bool {
 	return true
 }
 
-func tokenSelling(userid string, tokenid string) bool {
-	if _, err := os.Stat("tokens/" + tokenid + "/selling"); err != nil {
-		return false
-	}
-
-	return true
-}
-
 func tokenSell(userid string, req *tokenSellRequest, res *tokenSellResponse) error {
 	if err := verifyTokenSellRequest(req); err != nil {
 		res.Error = err.Error()
@@ -84,7 +76,7 @@ func tokenSell(userid string, req *tokenSellRequest, res *tokenSellResponse) err
 		return errors.New(res.Error)
 	}
 
-	if tokenSelling(userid, req.TokenID) && req.SellingID == "" {
+	if storage.TokenSelling(userid, req.TokenID) && req.SellingID == "" {
 		// TODO: verify that token is selling by userid
 		res.Error = "token already on sale"
 		return errors.New(res.Error)

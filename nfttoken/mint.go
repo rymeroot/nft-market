@@ -57,34 +57,28 @@ func tokenReserved(userid string, tokenid string) bool {
 func tokenSaveReservation(userid string, collectionID string, tokenID *uint256.Int) error {
 	res := tokenID.String()[2:]
 
-	err := os.MkdirAll("tokens/"+res, os.ModePerm)
+	err := storage.CreateToken(userid, collectionID, res)
 	if err != nil {
 		return errors.New("failed to reserve token")
 	}
 
 	// TODO: here parallel request from another user theoretically could hijack the reservation
 
-	err = os.WriteFile("tokens/"+res+"/user_id", []byte(userid), 0644)
+	err = storage.SetTokenOwner(res, userid)
 	if err != nil {
-		_ = os.RemoveAll("tokens/" + res)
+		storage.RemoveToken(userid, collectionID, res)
 		return errors.New("failed to reserve token (writing user id)")
 	}
 
-	err = os.WriteFile("tokens/"+res+"/collection_id", []byte(collectionID), 0644)
+	err = storage.SetTokenCollection(res, collectionID)
 	if err != nil {
-		_ = os.RemoveAll("tokens/" + res)
+		storage.RemoveToken(userid, collectionID, res)
 		return errors.New("failed to reserve token (writing collection id)")
 	}
 
-	err = os.MkdirAll(userid+"/collections/"+collectionID+"/"+res, os.ModePerm)
+	err = storage.SetTokenIndex(tokenID)
 	if err != nil {
-		_ = os.RemoveAll("tokens/" + res)
-		return errors.New("failed to reserve token in collection")
-	}
-
-	err = os.WriteFile("tokens/index", tokenID.Bytes(), 0644)
-	if err != nil {
-		_ = os.RemoveAll("tokens/" + res)
+		storage.RemoveToken(userid, collectionID, res)
 		return errors.New("failed to reserve token (writing index)")
 	}
 
@@ -92,21 +86,10 @@ func tokenSaveReservation(userid string, collectionID string, tokenID *uint256.I
 }
 
 func tokenReserve(userid string, collectionID string) (string, error) {
-	tokenID := uint256.NewInt(0)
+	tokenID := uint256.NewInt(1)
 
-	if _, err := os.Stat("tokens/"); err != nil {
-		err = os.MkdirAll("tokens/", os.ModePerm)
-		if err != nil {
-			return "", errors.New("failed to reserve token (cannot create storage)")
-		}
-	}
-
-	if _, err := os.Stat("tokens/index"); err == nil {
-		bytes, err := os.ReadFile("tokens/index")
-		if err != nil {
-			return "", errors.New("failed to reserve token (unreadable index)")
-		}
-		tokenID = new(uint256.Int).Add(tokenID.SetBytes(bytes), uint256.NewInt(1))
+	if err := storage.GetTokenIndex(tokenID); err == nil {
+		tokenID = new(uint256.Int).Add(tokenID, uint256.NewInt(1))
 	}
 
 	if err := tokenSaveReservation(userid, collectionID, tokenID); err != nil {

@@ -29,10 +29,32 @@ func Connect() (context.Context, imx.Config, *imx.Client) {
 	return ctx, cfg, imxClient
 }
 
+func Register(userPrivateKey string, l2signer *stark.Signer, email string) string {
+	return ""
+	ctx, cfg, imxClient := Connect()
+	l1signer, err := ethereum.NewSigner(userPrivateKey, cfg.ChainID)
+	if err != nil {
+		log.Printf("failed to create L1Signer: %v\n", err)
+		return ""
+	}
+
+	imxres, err := imxClient.RegisterOffchain(ctx, l1signer, l2signer, email)
+	if err != nil {
+		log.Printf("failed to register user in ImmutableX: %v\n", err)
+		return ""
+	}
+
+	return imxres.TxHash
+}
+
 func Mint(userPrivateKey string, userAddress string, contractAddress string, tokenID string, tokenMetadata string) string {
 	return "0"
 	ctx, cfg, imxClient := Connect()
 	l1signer, err := ethereum.NewSigner(userPrivateKey, cfg.ChainID)
+	if err != nil {
+		log.Printf("failed to create L1Signer: %v\n", err)
+		return ""
+	}
 
 	var royaltyPercentage float32 = 10
 	var newToken = imx.UnsignedMintRequest{
@@ -80,7 +102,7 @@ func Sell(userPrivateKey string, userAddress string, starkPrivateKeyStr string, 
 	ctx, cfg, imxClient := Connect()
 	l1signer, err := ethereum.NewSigner(userPrivateKey, cfg.ChainID)
 	if err != nil {
-		log.Panicf("error in creating signer: %v\n", err)
+		log.Printf("failed to create L1Signer: %v\n", err)
 		return 0, err
 	}
 
@@ -88,7 +110,7 @@ func Sell(userPrivateKey string, userAddress string, starkPrivateKeyStr string, 
 	starkPrivateKey.SetString(starkPrivateKeyStr, 16)
 	l2signer, err := stark.NewSigner(starkPrivateKey)
 	if err != nil {
-		log.Panicf("error in creating StarkSigner: %v\n", err)
+		log.Printf("error in creating StarkSigner: %v\n", err)
 		return 0, err
 	}
 
@@ -119,7 +141,7 @@ func CancelSale(userPrivateKey string, starkPrivateKeyStr string, saleID string)
 	ctx, cfg, imxClient := Connect()
 	l1signer, err := ethereum.NewSigner(userPrivateKey, cfg.ChainID)
 	if err != nil {
-		log.Panicf("error in creating signer: %v\n", err)
+		log.Printf("failed to create L1Signer: %v\n", err)
 		return 0, err
 	}
 
@@ -127,7 +149,7 @@ func CancelSale(userPrivateKey string, starkPrivateKeyStr string, saleID string)
 	starkPrivateKey.SetString(starkPrivateKeyStr, 16)
 	l2signer, err := stark.NewSigner(starkPrivateKey)
 	if err != nil {
-		log.Panicf("error in creating StarkSigner: %v\n", err)
+		log.Printf("error in creating StarkSigner: %v\n", err)
 		return 0, err
 	}
 
@@ -151,7 +173,7 @@ func Buy(userPrivateKey string, starkPrivateKeyStr string, saleID string) (int32
 	ctx, cfg, imxClient := Connect()
 	l1signer, err := ethereum.NewSigner(userPrivateKey, cfg.ChainID)
 	if err != nil {
-		log.Panicf("error in creating signer: %v\n", err)
+		log.Printf("failed to create L1Signer: %v\n", err)
 		return 0, err
 	}
 
@@ -159,7 +181,7 @@ func Buy(userPrivateKey string, starkPrivateKeyStr string, saleID string) (int32
 	starkPrivateKey.SetString(starkPrivateKeyStr, 16)
 	l2signer, err := stark.NewSigner(starkPrivateKey)
 	if err != nil {
-		log.Panicf("error in creating StarkSigner: %v\n", err)
+		log.Printf("error in creating StarkSigner: %v\n", err)
 		return 0, err
 	}
 
@@ -184,7 +206,7 @@ func Transfer(userPrivateKey string, starkPrivateKeyStr string, receiver string)
 	ctx, cfg, imxClient := Connect()
 	l1signer, err := ethereum.NewSigner(userPrivateKey, cfg.ChainID)
 	if err != nil {
-		log.Panicf("error in creating signer: %v\n", err)
+		log.Printf("failed to create L1Signer: %v\n", err)
 		return 0, err
 	}
 
@@ -192,7 +214,7 @@ func Transfer(userPrivateKey string, starkPrivateKeyStr string, receiver string)
 	starkPrivateKey.SetString(starkPrivateKeyStr, 16)
 	l2signer, err := stark.NewSigner(starkPrivateKey)
 	if err != nil {
-		log.Panicf("error in creating StarkSigner: %v\n", err)
+		log.Printf("error in creating StarkSigner: %v\n", err)
 		return 0, err
 	}
 
@@ -211,4 +233,29 @@ func Transfer(userPrivateKey string, starkPrivateKeyStr string, receiver string)
 
 	log.Printf("trade ID: %v", response.TransferId)
 	return response.TransferId, nil
+}
+
+func Deposit(userPrivateKey string, amount string) error {
+	return nil
+	ctx, cfg, imxClient := Connect()
+	l1signer, err := ethereum.NewSigner(userPrivateKey, cfg.ChainID)
+	if err != nil {
+		log.Printf("failed to create L1Signer: %v\n", err)
+		return err
+	}
+
+	ethAmountInWei, err := strconv.ParseUint(amount, 10, 64)
+	if err != nil {
+		log.Printf("error in converting ethAmountInWei from string to int: %v\n", err)
+		return err
+	}
+
+	transaction, err := imx.NewETHDeposit(ethAmountInWei).Deposit(ctx, imxClient, l1signer, nil)
+	if err != nil {
+		log.Printf("Eth deposit failure: %v", err)
+		return err
+	}
+
+	log.Println("Eth Deposit transaction hash:", transaction.Hash())
+	return nil
 }

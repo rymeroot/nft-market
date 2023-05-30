@@ -12,14 +12,15 @@ type tokenBuyRequest struct {
 }
 
 type tokenBuyResponse struct {
-	BuyID string `json:"buy_id,omitempty"`
-	Error string `json:"error,omitempty"`
+	BuyID string   `json:"buy_id,omitempty"`
+	Error string   `json:"error,omitempty"`
+	List  []string `json:"list,omitempty"`
 }
 
 func verifyTokenBuyRequest(req *tokenBuyRequest) error {
 	// TODO: verify formatting
-	if req.TokenID == "" {
-		return errors.New("token ID missing")
+	if len(req.TokenID) > 64 {
+		return errors.New("invalid token ID")
 	}
 	return nil
 }
@@ -30,7 +31,16 @@ func tokenBuy(userid string, req *tokenBuyRequest, res *tokenBuyResponse) error 
 		return err
 	}
 
-	if !tokenSelling(userid, req.TokenID) {
+	if req.TokenID == "" {
+		err := storage.GetTokenSellingList(userid, res.List)
+		if err != nil {
+			res.Error = err.Error()
+			return err
+		}
+		return nil
+	}
+
+	if !storage.TokenSelling(userid, req.TokenID) {
 		// TODO: verify that token is selling by userid
 		res.Error = "token is not on sale"
 		return errors.New(res.Error)
