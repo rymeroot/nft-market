@@ -259,3 +259,76 @@ func Deposit(userPrivateKey string, amount string) error {
 	log.Println("Eth Deposit transaction hash:", transaction.Hash())
 	return nil
 }
+
+func WithdrawPrepare(userPrivateKey string, starkPrivateKeyStr string, amount string) (int32, error) {
+	return 0, nil
+	ctx, cfg, imxClient := Connect()
+	l1signer, err := ethereum.NewSigner(userPrivateKey, cfg.ChainID)
+	if err != nil {
+		log.Printf("failed to create L1Signer: %v\n", err)
+		return 0, err
+	}
+
+	starkPrivateKey := new(big.Int)
+	starkPrivateKey.SetString(starkPrivateKeyStr, 16)
+	l2signer, err := stark.NewSigner(starkPrivateKey)
+	if err != nil {
+		log.Printf("error in creating StarkSigner: %v\n", err)
+		return 0, err
+	}
+
+	withdrawRequest := api.GetSignableWithdrawalRequest{
+		Amount: amount,
+		Token:  imx.SignableETHToken(),
+	}
+
+	response, err := imxClient.PrepareWithdrawal(ctx, l1signer, l2signer, withdrawRequest)
+	if err != nil {
+		log.Printf("error calling PrepareWithdrawal in IMX: %v", err)
+		return 0, err
+	}
+
+	return response.WithdrawalId, nil
+}
+
+func WithdrawGetState(withdrawID int32) (string, error) {
+	return "", nil
+	ctx, _, imxClient := Connect()
+
+	withdrawState, err := imxClient.GetWithdrawal(ctx, strconv.FormatInt(int64(withdrawID), 10))
+	if err != nil {
+		log.Printf("error calling GetWithdrawal in IMX: %v", err)
+		return "", err
+	}
+
+	return withdrawState.RollupStatus, nil
+}
+
+// NOTE: this should be called only after WithdrawGetState function returns "confirmed" (as per IMX documentation)
+func WithdrawFinalize(userPrivateKey string, starkPrivateKeyStr string) error {
+	return nil
+	ctx, cfg, imxClient := Connect()
+	l1signer, err := ethereum.NewSigner(userPrivateKey, cfg.ChainID)
+	if err != nil {
+		log.Printf("failed to create L1Signer: %v\n", err)
+		return err
+	}
+
+	starkPrivateKey := new(big.Int)
+	starkPrivateKey.SetString(starkPrivateKeyStr, 16)
+	l2signer, err := stark.NewSigner(starkPrivateKey)
+	if err != nil {
+		log.Printf("error in creating StarkSigner: %v\n", err)
+		return err
+	}
+
+	ethWithdrawal := imx.NewEthWithdrawal()
+	transaction, err := ethWithdrawal.CompleteWithdrawal(ctx, imxClient, l1signer, l2signer.GetAddress(), nil)
+	if err != nil {
+		log.Panicf("error calling CompleteEthWithdrawal in IMX: %v", err)
+		return err
+	}
+
+	log.Println("Eth withdraw transaction hash:", transaction.Hash())
+	return nil
+}
