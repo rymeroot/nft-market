@@ -70,62 +70,62 @@ func userCreate(req *userRegisterRequest) (string, error) {
 		return "", errors.New("user " + userid + " already registered")
 	}
 
-	err = os.MkdirAll(userid+"/collections/tokens", os.ModePerm)
+	err = os.MkdirAll(storage.Prefix+storage.UserDir+userid+"/collections/tokens", os.ModePerm)
 	if err != nil {
 		return "", errors.New("failed to create user infrastructure")
 	}
 
 	privateKey, err := crypto.GenerateKey()
 	if err != nil {
-		_ = os.RemoveAll(userid)
+		_ = os.RemoveAll(storage.Prefix + storage.UserDir + userid)
 		return failWith("failed to create user wallet (private key)", err)
 	}
 	privateKeyBytes := crypto.FromECDSA(privateKey)
 	privateKeyString := hexutil.Encode(privateKeyBytes)[2:]
-	err = os.WriteFile(userid+"/private_key", []byte(privateKeyString), 0644)
+	err = os.WriteFile(storage.Prefix+storage.UserDir+userid+"/private_key", []byte(privateKeyString), 0644)
 	if err != nil {
-		_ = os.RemoveAll(userid)
+		_ = os.RemoveAll(storage.Prefix + storage.UserDir + userid)
 		return failWith("failed to create user infrastructure (private key)", err)
 	}
 
 	publicKey := privateKey.Public()
 	publicKeyECDSA, ok := publicKey.(*ecdsa.PublicKey)
 	if !ok {
-		_ = os.RemoveAll(userid)
+		_ = os.RemoveAll(storage.Prefix + storage.UserDir + userid)
 		return failWith("error casting public key to ECDSA", nil)
 	}
 	publicKeyBytes := crypto.FromECDSAPub(publicKeyECDSA)
-	err = os.WriteFile(userid+"/public_key", []byte(hexutil.Encode(publicKeyBytes)[4:]), 0644)
+	err = os.WriteFile(storage.Prefix+storage.UserDir+userid+"/public_key", []byte(hexutil.Encode(publicKeyBytes)[4:]), 0644)
 	if err != nil {
-		_ = os.RemoveAll(userid)
+		_ = os.RemoveAll(storage.Prefix + storage.UserDir + userid)
 		return failWith("failed to create user infrastructure (public key)", err)
 	}
 
 	address := crypto.PubkeyToAddress(*publicKeyECDSA).Hex()
-	err = os.WriteFile(userid+"/address", []byte(address), 0644)
+	err = os.WriteFile(storage.Prefix+storage.UserDir+userid+"/address", []byte(address), 0644)
 	if err != nil {
-		_ = os.RemoveAll(userid)
+		_ = os.RemoveAll(storage.Prefix + storage.UserDir + userid)
 		return failWith("failed to create user infrastructure (address)", err)
 	}
 
 	privateStarkKey, err := stark.GenerateKey()
 	if err != nil {
-		_ = os.RemoveAll(userid)
+		_ = os.RemoveAll(storage.Prefix + storage.UserDir + userid)
 		return failWith("failed to generate Stark Private Key", err)
 	}
-	err = os.WriteFile(userid+"/stark_private_key", []byte(fmt.Sprintf("%x", privateStarkKey)), 0644)
+	err = os.WriteFile(storage.Prefix+storage.UserDir+userid+"/stark_private_key", []byte(fmt.Sprintf("%x", privateStarkKey)), 0644)
 	if err != nil {
-		_ = os.RemoveAll(userid)
+		_ = os.RemoveAll(storage.Prefix + storage.UserDir + userid)
 		return failWith("failed to create user infrastructure (stark private key)", err)
 	}
 	l2signer, err := stark.NewSigner(privateStarkKey)
 	if err != nil {
-		_ = os.RemoveAll(userid)
+		_ = os.RemoveAll(storage.Prefix + storage.UserDir + userid)
 		return failWith("failed to create StarkSigner", err)
 	}
-	err = os.WriteFile(userid+"/stark_address", []byte(l2signer.GetAddress()), 0644)
+	err = os.WriteFile(storage.Prefix+storage.UserDir+userid+"/stark_address", []byte(l2signer.GetAddress()), 0644)
 	if err != nil {
-		_ = os.RemoveAll(userid)
+		_ = os.RemoveAll(storage.Prefix + storage.UserDir + userid)
 		return failWith("failed to create user infrastructure (stark public key)", err)
 	}
 

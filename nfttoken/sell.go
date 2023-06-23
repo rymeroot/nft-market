@@ -40,18 +40,18 @@ func verifyTokenSellRequest(req *tokenSellRequest) error {
 }
 
 func tokenMarkSelling(userid string, tokenid string, sellingID string) bool {
-	path := "tokens/" + tokenid + "/selling"
+	path := storage.TokenDir + tokenid + "/selling"
 
 	if sellingID == "-1" {
 		// cancelling sell order
-		err := os.Remove(path)
+		err := os.Remove(storage.Prefix + path)
 		if err != nil {
 			return false
 		}
 		return true
 	}
 
-	err := os.WriteFile(path, []byte(sellingID), 0644)
+	err := os.WriteFile(storage.Prefix+path, []byte(sellingID), 0644)
 	if err != nil {
 		return false
 	}
@@ -70,7 +70,7 @@ func tokenSell(userid string, req *tokenSellRequest, res *tokenSellResponse) err
 		return errors.New(res.Error)
 	}
 
-	if !tokenMinted(userid, req.TokenID) {
+	if !storage.TokenMinted(userid, req.TokenID) {
 		// TODO: verify that token is minted by userid
 		res.Error = "token not minted"
 		return errors.New(res.Error)

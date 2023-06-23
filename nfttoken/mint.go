@@ -29,26 +29,9 @@ func verifyTokenMintRequest(req *tokenMintRequest) error {
 	return nil
 }
 
-func tokenMarkMinted(userid string, tokenid string, imxtokenid string) bool {
-	err := os.WriteFile("tokens/"+tokenid+"/minted", []byte(imxtokenid), 0644)
-	if err != nil {
-		return false
-	}
-
-	return true
-}
-
-func tokenMinted(userid string, tokenid string) bool {
-	if _, err := os.Stat("tokens/" + tokenid + "/minted"); err != nil {
-		return false
-	}
-
-	return true
-}
-
 func tokenReserved(userid string, tokenid string) bool {
 	// TODO: check if reserved for userid
-	if _, err := os.Stat("tokens/" + tokenid); err != nil {
+	if _, err := os.Stat(storage.Prefix + storage.TokenDir + tokenid); err != nil {
 		return false
 	}
 	return true
@@ -107,7 +90,7 @@ func tokenMint(userid string, req *tokenMintRequest, res *tokenMintResponse) err
 		return err
 	}
 
-	if tokenMinted(userid, req.TokenID) {
+	if storage.TokenMinted(userid, req.TokenID) {
 		res.Error = "token already minted"
 		return errors.New(res.Error)
 	}
@@ -146,7 +129,7 @@ func tokenMint(userid string, req *tokenMintRequest, res *tokenMintResponse) err
 
 	// TODO: verify if token is reserved by userid
 	imxTokenID := nftimx.Mint(string(privateKey), string(userAddress), string(collectionContractAddress), req.TokenID, req.Metadata)
-	tokenMarkMinted(userid, req.TokenID, imxTokenID)
+	_ = storage.SetTokenMintedID(userid, req.TokenID, imxTokenID)
 	res.MintID = imxTokenID
 	return nil
 }

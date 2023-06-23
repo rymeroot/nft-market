@@ -2,8 +2,11 @@ package nftuser
 
 import (
 	"errors"
+	"github.com/alitto/pond"
+	"log"
 	"nft-market/nftimx"
 	"nft-market/storage"
+	"time"
 )
 
 type userWithdrawRequest struct {
@@ -23,10 +26,63 @@ func verifyUserWithdrawRequest(req *userWithdrawRequest) error {
 	return nil
 }
 
+var WorkerPool *pond.WorkerPool
+
+// NOTE: run withdraw finalizing in async go routine since it can take many hours to confirm (as per IMX documentation)
+func UserWithdrawFinalize(userid string) {
+
+	WorkerPool.Submit(
+		func() {
+			privateKey, err := storage.GetUserPrivateKey(userid)
+			if err != nil {
+				return
+			}
+			starkKey, err := storage.GetUserStarkPrivateKey(userid)
+			if err != nil {
+				return
+			}
+
+			withdrawID, err := storage.GetUserWithdrawID(userid)
+			if err != nil {
+				log.Printf("failed to get withdraw ID")
+				return
+			}
+			// TODO: check IMX docs if withdraw ID could be negative
+			if withdrawID < 1 {
+				log.Printf("invalid withdraw ID")
+				return
+			}
+
+			for {
+				withdrawState, _ := nftimx.WithdrawGetState(withdrawID)
+				if withdrawState == "confirmed" {
+					break
+				}
+				// TODO: use exponential backoff? (could be problematic when starting up with a lot of withdrawals)
+				time.Sleep(time.Hour)
+			}
+
+			err = nftimx.WithdrawFinalize(string(privateKey), string(starkKey))
+			if err != nil {
+				return
+			}
+
+			storage.UserWithdrawFinalize(userid)
+
+			return
+		},
+	)
+}
+
 func userWithdraw(userid string, req *userWithdrawRequest, res *userWithdrawResponse) error {
 	if err := verifyUserWithdrawRequest(req); err != nil {
 		res.Error = err.Error()
 		return err
+	}
+
+	if storage.UserWithdrawInProgress(userid) {
+		res.Error = "withdraw operation is already in progress"
+		return errors.New(res.Error)
 	}
 
 	privateKey, err := storage.GetUserPrivateKey(userid)
@@ -46,20 +102,13 @@ func userWithdraw(userid string, req *userWithdrawRequest, res *userWithdrawResp
 		return err
 	}
 
-	withdrawState, err := nftimx.WithdrawGetState(withdrawID)
+	err = storage.SetUserWithdrawID(userid, withdrawID)
 	if err != nil {
-		res.Error = "failed to get withdraw state from IMX"
+		res.Error = "failed to set user withdraw ID"
 		return err
 	}
 
-	// TODO: run withdraw finalizing in async go routine since it can take many hours to confirm (as per IMX documentation)
-	if withdrawState == "confirmed" {
-		err = nftimx.WithdrawFinalize(string(privateKey), string(starkKey))
-		if err != nil {
-			res.Error = "failed to finalize withdraw operation in IMX"
-			return err
-		}
-	}
+	UserWithdrawFinalize(userid)
 
 	return nil
 }
